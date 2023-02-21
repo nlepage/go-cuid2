@@ -67,6 +67,13 @@ func randomLetter(random io.Reader) (string, error) {
 func createFingerprint(env []string, random io.Reader) (string, error) {
 	if env == nil {
 		env = os.Environ()
+
+		hostname, err := os.Hostname()
+		if err != nil {
+			return "", err
+		}
+
+		env = append(env, hostname, strconv.Itoa(os.Getpid()))
 	}
 
 	salt, err := createEntropy(BigLength, random)
