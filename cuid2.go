@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"io"
 	"math/big"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/sha3"
@@ -62,13 +64,22 @@ func randomLetter(random io.Reader) (string, error) {
 	return string(rune(i.Int64() + 97)), nil
 }
 
-func createFingerprint(random io.Reader) (string, error) {
-	i, err := rand.Int(random, big2063)
+func createFingerprint(env []string, random io.Reader) (string, error) {
+	if env == nil {
+		env = os.Environ()
+	}
+
+	salt, err := createEntropy(BigLength, random)
 	if err != nil {
 		return "", err
 	}
-	// no global object keys to give here...
-	return hash(i.String(), 4)
+
+	fingerprint, err := hash(strings.Join(env, ",")+salt, BigLength)
+	if err != nil {
+		return "", err
+	}
+
+	return fingerprint[:BigLength], nil
 }
 
 func createCounter(count int64) func() int64 {
@@ -110,7 +121,7 @@ func Init(options Options) (func() (string, error), error) {
 	var fingerprint = options.Fingerprint
 	if fingerprint == "" {
 		var err error
-		fingerprint, err = createFingerprint(random)
+		fingerprint, err = createFingerprint(nil, random)
 		if err != nil {
 			return nil, err
 		}
