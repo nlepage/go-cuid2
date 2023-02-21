@@ -13,27 +13,28 @@ import (
 const (
 	DefaultLength = 24
 	BigLength     = 32
+)
 
-	primeBits = 17
+var (
+	big36   = big.NewInt(36)
+	big26   = big.NewInt(26)
+	big2063 = big.NewInt(2063)
+
+	initialCountMax = big.NewInt(476782367)
 )
 
 func createEntropy(length int, random io.Reader) (string, error) {
 	var entropy string
 
 	for len(entropy) < length {
-		// generating a random prime instead of using predefined ones
-		randomPrime, err := rand.Prime(random, primeBits)
-		if err != nil {
-			return "", err
-		}
-		n, err := rand.Int(random, randomPrime)
+		n, err := rand.Int(random, big36)
 		if err != nil {
 			return "", err
 		}
 		entropy += n.Text(36)
 	}
 
-	return entropy[:length], nil
+	return entropy, nil
 }
 
 func bufToBigInt(buf [64]byte) *big.Int {
@@ -50,18 +51,11 @@ func bufToBigInt(buf [64]byte) *big.Int {
 }
 
 func hash(input string, length int) (string, error) {
-	salt, err := createEntropy(length, rand.Reader)
-	if err != nil {
-		return "", err
-	}
-
-	var text = input + salt
-
-	return bufToBigInt(sha3.Sum512([]byte(text))).Text(36)[1:], nil
+	return bufToBigInt(sha3.Sum512([]byte(input))).Text(36)[1:], nil
 }
 
 func randomLetter(random io.Reader) (string, error) {
-	i, err := rand.Int(random, big.NewInt(26))
+	i, err := rand.Int(random, big26)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +63,7 @@ func randomLetter(random io.Reader) (string, error) {
 }
 
 func createFingerprint(random io.Reader) (string, error) {
-	i, err := rand.Int(random, big.NewInt(2063))
+	i, err := rand.Int(random, big2063)
 	if err != nil {
 		return "", err
 	}
@@ -101,7 +95,7 @@ func Init(options Options) (func() (string, error), error) {
 
 	var counter = options.Counter
 	if counter == nil {
-		count, err := rand.Int(random, big.NewInt(2057))
+		count, err := rand.Int(random, initialCountMax)
 		if err != nil {
 			return nil, err
 		}
@@ -123,17 +117,21 @@ func Init(options Options) (func() (string, error), error) {
 	}
 
 	return func() (string, error) {
-		time := strconv.FormatInt(time.Now().UnixMilli(), 36)
-		randomEntropy, err := createEntropy(length, random)
-		if err != nil {
-			return "", err
-		}
-		count := strconv.FormatInt(counter(), 36)
 		firstLetter, err := randomLetter(random)
+
+		time := strconv.FormatInt(time.Now().UnixMilli(), 36)
+
+		count := strconv.FormatInt(counter(), 36)
 		if err != nil {
 			return "", err
 		}
-		hashInput := time + randomEntropy + count + fingerprint
+
+		salt, err := createEntropy(length, random)
+		if err != nil {
+			return "", err
+		}
+
+		hashInput := time + salt + count + fingerprint
 
 		hashOutput, err := hash(hashInput, length)
 		if err != nil {
